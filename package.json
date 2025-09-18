@@ -1,0 +1,56 @@
+{
+  "name": "talkflow",
+  "version": "1.0.0",
+  "description": "Smart Video/Audio Calls with AI Notes",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:api\" \"npm run dev:signaling\"",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:api": "npm run dev --workspace=services/api",
+    "dev:signaling": "npm run dev --workspace=services/signaling",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "lint:fix": "npm run lint -- --fix",
+    "clean": "rm -rf node_modules apps/*/node_modules services/*/node_modules packages/*/node_modules",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "db:migrate": "npm run migrate --workspace=services/api",
+    "db:seed": "npm run seed --workspace=services/api"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "concurrently": "^8.2.0",
+    "eslint": "^8.45.0",
+    "eslint-config-next": "^13.4.0",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/talkflow.git"
+  },
+  "keywords": [
+    "video-calls",
+    "audio-calls",
+    "webrtc",
+    "ai-notes",
+    "transcription",
+    "saas"
+  ],
+  "author": "TalkFlow Team",
+  "license": "MIT"
+}

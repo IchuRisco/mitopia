@@ -1,0 +1,275 @@
+# Mitopia Production Docker Compose Configuration
+
+version: '3.8'
+
+services:
+  # Reverse Proxy & Load Balancer
+  nginx:
+    image: nginx:alpine
+    container_name: mitopia-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - web
+      - api
+      - signaling
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # Frontend Application
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: mitopia-web
+    environment:
+      - VITE_API_URL=https://api.mitopia.com
+      - VITE_SIGNALING_URL=https://signaling.mitopia.com
+      - VITE_TRANSLATION_URL=https://translation.mitopia.com
+      - VITE_BILLING_URL=https://billing.mitopia.com
+      - VITE_STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - VITE_APP_URL=https://mitopia.com
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # Main API Service
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile.production
+    container_name: mitopia-api
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+    volumes:
+      - ./logs/api:/app/logs
+    depends_on:
+      - redis
+      - rabbitmq
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # WebRTC Signaling Service
+  signaling:
+    build:
+      context: ./services/signaling
+      dockerfile: Dockerfile.production
+    container_name: mitopia-signaling
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=${REDIS_URL}
+      - API_SERVICE_URL=http://api:8001
+      - TURN_SERVER_URL=${TURN_SERVER_URL}
+      - TURN_USERNAME=${TURN_USERNAME}
+      - TURN_PASSWORD=${TURN_PASSWORD}
+    volumes:
+      - ./logs/signaling:/app/logs
+    depends_on:
+      - redis
+      - api
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # Speech-to-Text Service
+  stt:
+    build:
+      context: ./services/stt
+      dockerfile: Dockerfile.production
+    container_name: mitopia-stt
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - API_SERVICE_URL=http://api:8001
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - stt_models:/app/models
+      - ./logs/stt:/app/logs
+    depends_on:
+      - redis
+      - rabbitmq
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # Real-time Translation Service
+  translation:
+    build:
+      context: ./services/translation
+      dockerfile: Dockerfile.production
+    container_name: mitopia-translation
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - API_SERVICE_URL=http://api:8001
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - translation_models:/app/models
+      - ./logs/translation:/app/logs
+    depends_on:
+      - redis
+      - rabbitmq
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # Billing Service
+  billing:
+    build:
+      context: ./services/billing
+      dockerfile: Dockerfile.production
+    container_name: mitopia-billing
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - PAYPAL_CLIENT_ID=${PAYPAL_CLIENT_ID}
+      - PAYPAL_CLIENT_SECRET=${PAYPAL_CLIENT_SECRET}
+    volumes:
+      - ./logs/billing:/app/logs
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # AI Notes Processing Service
+  notes:
+    build:
+      context: ./services/notes
+      dockerfile: Dockerfile.production
+    container_name: mitopia-notes
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - API_SERVICE_URL=http://api:8001
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - notes_models:/app/models
+      - ./logs/notes:/app/logs
+    depends_on:
+      - redis
+      - rabbitmq
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: mitopia-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: mitopia-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+      - RABBITMQ_MANAGEMENT_ALLOW_WEB_ACCESS=false
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # Monitoring - Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mitopia-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # Monitoring - Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mitopia-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # Log Aggregation - Loki
+  loki:
+    image: grafana/loki:latest
+    container_name: mitopia-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+  # Log Collection - Promtail
+  promtail:
+    image: grafana/promtail:latest
+    container_name: mitopia-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./monitoring/promtail.yml:/etc/promtail/config.yml:ro
+      - ./logs:/var/log/mitopia:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - loki
+    restart: unless-stopped
+    networks:
+      - mitopia-network
+
+volumes:
+  redis_data:
+  rabbitmq_data:
+  stt_models:
+  translation_models:
+  notes_models:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+
+networks:
+  mitopia-network:
+    driver: bridge

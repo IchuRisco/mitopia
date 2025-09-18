@@ -1,0 +1,96 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+# Frontend Service
+[[services]]
+name = "talkflow-web"
+source = "apps/web"
+
+[services.build]
+buildCommand = "npm run build"
+startCommand = "npm run preview -- --host 0.0.0.0 --port $PORT"
+
+[services.variables]
+NODE_ENV = "production"
+VITE_API_URL = { $ref = "talkflow-api.RAILWAY_PUBLIC_DOMAIN", template = "https://${{ .RAILWAY_PUBLIC_DOMAIN }}" }
+VITE_SIGNALING_URL = { $ref = "talkflow-signaling.RAILWAY_PUBLIC_DOMAIN", template = "https://${{ .RAILWAY_PUBLIC_DOMAIN }}" }
+
+# API Service
+[[services]]
+name = "talkflow-api"
+source = "services/api"
+
+[services.build]
+buildCommand = "npm run build && npx prisma generate && npx prisma migrate deploy"
+startCommand = "npm start"
+
+[services.variables]
+NODE_ENV = "production"
+DATABASE_PROVIDER = "postgresql"
+DATABASE_URL = { $ref = "DATABASE.DATABASE_URL" }
+REDIS_URL = { $ref = "REDIS.REDIS_URL" }
+JWT_SECRET = { $ref = "JWT_SECRET" }
+OPENAI_API_KEY = { $ref = "OPENAI_API_KEY" }
+
+# Signaling Service
+[[services]]
+name = "talkflow-signaling"
+source = "services/signaling"
+
+[services.build]
+buildCommand = "npm run build"
+startCommand = "npm start"
+
+[services.variables]
+NODE_ENV = "production"
+REDIS_URL = { $ref = "REDIS.REDIS_URL" }
+API_SERVICE_URL = { $ref = "talkflow-api.RAILWAY_PUBLIC_DOMAIN", template = "https://${{ .RAILWAY_PUBLIC_DOMAIN }}" }
+CORS_ORIGIN = { $ref = "talkflow-web.RAILWAY_PUBLIC_DOMAIN", template = "https://${{ .RAILWAY_PUBLIC_DOMAIN }}" }
+
+# Speech-to-Text Service
+[[services]]
+name = "talkflow-stt"
+source = "services/stt"
+
+[services.build]
+buildCommand = "pip install -r requirements.txt"
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+
+[services.variables]
+MODEL_SIZE = "base"
+DEVICE = "cpu"
+OPENAI_API_KEY = { $ref = "OPENAI_API_KEY" }
+
+# Notes Processing Service
+[[services]]
+name = "talkflow-notes"
+source = "services/notes"
+
+[services.build]
+buildCommand = "pip install -r requirements.txt && python -m spacy download en_core_web_sm"
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+
+[services.variables]
+DATABASE_PROVIDER = "postgresql"
+DATABASE_URL = { $ref = "DATABASE.DATABASE_URL" }
+OPENAI_API_KEY = { $ref = "OPENAI_API_KEY" }
+
+# Database (PostgreSQL)
+[[services]]
+name = "DATABASE"
+plugin = "postgresql"
+
+[services.variables]
+POSTGRES_DB = "talkflow"
+POSTGRES_USER = "talkflow"
+
+# Redis Cache
+[[services]]
+name = "REDIS"
+plugin = "redis"
