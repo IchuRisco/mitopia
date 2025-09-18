@@ -1,0 +1,120 @@
+# Netlify Configuration for Mitopia Frontend
+
+[build]
+  # Build command
+  command = "cd apps/web && npm run build"
+  
+  # Publish directory (where the built files are)
+  publish = "apps/web/dist"
+  
+  # Base directory for build
+  base = "/"
+
+[build.environment]
+  # Node.js version
+  NODE_VERSION = "18"
+  
+  # Package manager
+  NPM_FLAGS = "--prefix apps/web"
+  
+  # Build environment
+  NODE_ENV = "production"
+
+# Environment variables for different deploy contexts
+[context.production.environment]
+  VITE_API_URL = "https://mitopia-api.up.railway.app"
+  VITE_SIGNALING_URL = "https://mitopia-signaling.up.railway.app"
+  VITE_TRANSLATION_URL = "https://mitopia-translation.up.railway.app"
+  VITE_BILLING_URL = "https://mitopia-billing.up.railway.app"
+  VITE_APP_URL = "https://mitopia.netlify.app"
+  VITE_APP_NAME = "Mitopia"
+  VITE_APP_DESCRIPTION = "Your Meeting Utopia"
+  VITE_ENABLE_ANALYTICS = "true"
+  VITE_ENABLE_ERROR_REPORTING = "true"
+
+[context.deploy-preview.environment]
+  VITE_API_URL = "https://mitopia-api-staging.up.railway.app"
+  VITE_SIGNALING_URL = "https://mitopia-signaling-staging.up.railway.app"
+  VITE_APP_URL = "https://deploy-preview-$REVIEW_ID--mitopia.netlify.app"
+  VITE_ENABLE_ANALYTICS = "false"
+
+[context.branch-deploy.environment]
+  VITE_API_URL = "https://mitopia-api-dev.up.railway.app"
+  VITE_SIGNALING_URL = "https://mitopia-signaling-dev.up.railway.app"
+  VITE_APP_URL = "https://$BRANCH--mitopia.netlify.app"
+  VITE_ENABLE_ANALYTICS = "false"
+
+# Redirect rules for SPA (Single Page Application)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# API proxy for development
+[[redirects]]
+  from = "/api/*"
+  to = "https://mitopia-api.up.railway.app/:splat"
+  status = 200
+  force = false
+
+# WebSocket proxy for signaling
+[[redirects]]
+  from = "/socket.io/*"
+  to = "https://mitopia-signaling.up.railway.app/:splat"
+  status = 200
+  force = false
+
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.stripe.com https://mitopia-api.up.railway.app https://mitopia-signaling.up.railway.app wss://mitopia-signaling.up.railway.app; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self';"
+
+# Cache static assets
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Cache service worker
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Functions (for serverless functions if needed)
+[functions]
+  directory = "netlify/functions"
+
+# Forms (for contact forms)
+[forms]
+  settings = true
+
+# Large Media (for large file handling)
+[large_media]
+  git_lfs = false
+
+# Build plugins
+[[plugins]]
+  package = "@netlify/plugin-lighthouse"
+  
+  [plugins.inputs.audits]
+    output_path = "reports/lighthouse.html"
+    
+  [plugins.inputs.settings]
+    emulated_form_factor = "desktop"
+    
+[[plugins]]
+  package = "netlify-plugin-submit-sitemap"
+  
+  [plugins.inputs]
+    baseUrl = "https://mitopia.netlify.app"
+    sitemapPath = "/sitemap.xml"
+    providers = [
+      "google",
+      "bing"
+    ]
